@@ -4,6 +4,10 @@
 
 TubeCraft helps educators, creators, and small teams produce short-form or lesson-based videos from one brief. Create a structured script, refine each scene, generate narration with timing, preview the result, and export an MP4—all from a Windows desktop app.
 
+<p align="center">
+  <img src="docs/media/tubecraft-workflow.png" alt="TubeCraft workflow: idea, AI script, template, narration, captions, render, and MP4 export" width="100%">
+</p>
+
 ## Why TubeCraft
 
 Most AI video tools lock the entire workflow behind a hosted editor. TubeCraft keeps the production workspace on your machine:

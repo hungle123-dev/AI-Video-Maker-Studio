@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>T2Studio Preview</title>
+<style>
+  :root { --accent:#3b82f6; --bd:#233054; --txt:#e2e8f0; --sub:#94a3b8; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:#0b1220; color:var(--txt);
+    font-family:"Segoe UI",system-ui,sans-serif; overflow:hidden; }
+  #wrap { display:flex; flex-direction:column; height:100%; padding:10px; gap:8px; }
+  #stageWrap { flex:1; display:flex; align-items:center; justify-content:center;
+    background:#000; border-radius:10px; overflow:hidden; min-height:0; }
+  #previewCanvas { max-width:100%; max-height:100%; display:block; border-radius:6px; }
+  #cap { font-size:12px; color:var(--sub); text-align:center; min-height:32px;
+    line-height:1.3; }
+  #bar { display:flex; align-items:center; gap:10px; }
+  #seekBar { flex:1; accent-color:var(--accent); height:4px; }
+  #timeDisplay { font-size:12px; color:var(--txt); font-weight:600;
+    min-width:88px; text-align:center; }
+  .ctrls { display:flex; align-items:center; justify-content:center; gap:14px; }
+  button { background:#111a2e; color:var(--txt); border:1px solid var(--bd);
+    border-radius:50%; width:40px; height:40px; font-size:16px; cursor:pointer; }
+  #btnPlay { width:52px; height:52px; background:var(--accent); border:none;
+    font-size:22px; color:#fff; }
+  button:active { transform:scale(.94); }
+  .hidden { position:absolute; left:-9999px; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="stageWrap"><canvas id="previewCanvas" width="1080" height="1920"></canvas></div>
+  <div id="cap"></div>
+  <div id="bar">
+    <span id="timeDisplay">0:00 / 0:00</span>
+    <input type="range" id="seekBar" min="0" max="100" value="0" step="0.1">
+  </div>
+  <div class="ctrls">
+    <button id="btnPrev" title="Step trước">⏮</button>
+    <button id="btnPlay" title="Phát">▶</button>
+    <button id="btnNext" title="Step sau">⏭</button>
+  </div>
+</div>
+
+<!-- DOM tối giản mà preview_renderer.js cần (ẩn) -->
+<select id="themeSelect" class="hidden"><option value="dark">dark</option>
+  <option value="whiteboard">whiteboard</option><option value="chalkboard">chalkboard</option></select>
+<select id="styleSelect" class="hidden"><option value="default">default</option>
+  <option value="cyberpunk">cyberpunk</option><option value="watercolor">watercolor</option>
+  <option value="inkwash">inkwash</option><option value="pastel">pastel</option>
+  <option value="pixel">pixel</option><option value="sketch">sketch</option>
+  <option value="sketchnote">sketchnote</option><option value="cartoon">cartoon</option>
+  <option value="liquidglass">liquidglass</option></select>
+<select id="wizardChatgptSize" class="hidden"><option value="9:16">9:16</option></select>
+<input id="selectedElementIndex" class="hidden" value="-1">
+
+<script>
+// ── THEMES (từ edu_studio_core.js) ──
+const THEMES = {
+  dark: { bg1:'#0a0a1a', bg2:'#1a1030', title:'#FFD700', text:'#F0F0F0', hl:'#FFD700', eqBg:'rgba(124,58,237,0.12)', eqBd:'rgba(167,139,250,0.4)', resBg:'rgba(0,255,136,0.05)', resBd:'rgba(0,255,136,0.5)', tipBg:'rgba(251,191,36,0.1)', tipBd:'rgba(251,191,36,0.4)', cardBg:'rgba(255,255,255,0.06)', cardBd:'rgba(255,255,255,0.12)' },
+  whiteboard: { bg1:'#F5F0E8', bg2:'#E8E0D0', title:'#1a1a1a', text:'#333', hl:'#E53E3E', eqBg:'rgba(49,130,206,0.08)', eqBd:'rgba(49,130,206,0.3)', resBg:'rgba(56,161,105,0.1)', resBd:'#38A169', tipBg:'rgba(237,137,54,0.1)', tipBd:'rgba(237,137,54,0.4)', cardBg:'rgba(0,0,0,0.03)', cardBd:'rgba(0,0,0,0.1)' },
+  chalkboard: { bg1:'#1a3528', bg2:'#2D4A3E', title:'#FFFFFF', text:'#E0E0D0', hl:'#FFE066', eqBg:'rgba(255,255,255,0.05)', eqBd:'rgba(255,255,255,0.15)', resBg:'rgba(255,224,102,0.1)', resBd:'#FFE066', tipBg:'rgba(144,238,144,0.1)', tipBd:'rgba(144,238,144,0.3)', cardBg:'rgba(255,255,255,0.04)', cardBd:'rgba(255,255,255,0.1)' }
+};
+window.drawEmoji = function(ctx, emoji, x, y, size){ ctx.save(); ctx.font=`${Math.round(size)}px "Segoe UI Emoji","Noto Color Emoji",sans-serif`; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(emoji,x,y); ctx.restore(); };
+window._PREVIEW_IMG_CACHE = window._PREVIEW_IMG_CACHE || {};
+
+// ── Globals mà renderer tiêu thụ ──
+let currentScript = { title:'', steps:[] };
+let currentTiming = { total_duration: 1, steps:[] };
+let currentProject = { aspect_ratio:'9:16' };
+let currentLesson = { id:'preview' };
+let previewTime = 0, previewPlaying = false, previewAudio = null;
+window.lastFrameTime = 0;
+
+// Shim các hàm renderer gọi khi đổi step (tránh crash) — no-op
+function updateElementsDropdown(){}
+function hideElementEditorProps(){}
+
+// ── Query params ──
+const Q = new URLSearchParams(location.search);
+const TOKEN = Q.get('token') || '';
+const ASPECT = Q.get('aspect') || '9:16';
+const THEME = Q.get('theme') || 'dark';
+const STYLE = Q.get('style') || 'default';
+document.getElementById('themeSelect').value = (THEME in THEMES) ? THEME : 'dark';
+try { document.getElementById('styleSelect').value = STYLE; } catch(e){}
+currentProject.aspect_ratio = ASPECT;
+currentProject.art_style = STYLE;
+
+// Override màu tiêu đề / màu chữ / font — patch THEMES của theme đang dùng
+const OV_TITLE = Q.get('titleColor') || '';
+const OV_TEXT = Q.get('textColor') || '';
+const OV_FONT = Q.get('font') || '';
+const _th = THEMES[document.getElementById('themeSelect').value] || THEMES.dark;
+if (OV_TITLE) { _th.title = OV_TITLE; _th.hl = OV_TITLE; }
+if (OV_TEXT) { _th.text = OV_TEXT; }
+if (OV_FONT) { _th.font = OV_FONT; window._OV_FONT = OV_FONT; }
+
+const cvs = document.getElementById('previewCanvas');
+const ctx = cvs.getContext('2d');
+const capEl = document.getElementById('cap');
+const btnPlay = document.getElementById('btnPlay');
+
+function totalDur(){ return currentTiming.total_duration || 1; }
+function curStepIdx(){
+  const t = previewTime, ts = currentTiming.steps||[];
+  for (let i=0;i<ts.length;i++) if (t>=ts[i].start && t<ts[i].end) return i;
+  return Math.max(0, ts.length-1);
+}
+function updateCaption(){
+  const i = curStepIdx(), st = (currentScript.steps||[])[i];
+  const vt = st ? (st.voice_text||'') : '';
+  capEl.textContent = `Step ${i+1}/${(currentScript.steps||[]).length} · ${vt.slice(0,100) || '(không lời thoại)'}`;
+}
+
+// ── Animation loop (thay runPreview của core.js) ──
+function frame(now){
+  if (!window.lastFrameTime) window.lastFrameTime = now;
+  const dt = Math.min(0.1, (now - window.lastFrameTime)/1000);
+  window.lastFrameTime = now;
+  if (previewPlaying){
+    if (previewAudio && !previewAudio.paused) previewTime = previewAudio.currentTime;
+    else previewTime += dt;
+    if (previewTime >= totalDur()){ previewTime = totalDur(); stop(); }
+  }
+  try { _runPreviewFrame(ctx, cvs); } catch(e){ console.error(e); }
+  updateCaption();
+  requestAnimationFrame(frame);
+}
+
+function play(){
+  if ((currentScript.steps||[]).length===0) return;
+  if (previewTime >= totalDur()) previewTime = 0;
+  previewPlaying = true; btnPlay.textContent='⏸';
+  if (previewAudio){ try{ previewAudio.currentTime = previewTime; previewAudio.play(); }catch(e){} }
+}
+function stop(){
+  previewPlaying = false; btnPlay.textContent='▶';
+  if (previewAudio){ try{ previewAudio.pause(); }catch(e){} }
+}
+btnPlay.onclick = ()=> previewPlaying ? stop() : play();
+
+function seekTo(t){
+  previewTime = Math.max(0, Math.min(totalDur(), t));
+  if (previewAudio){ try{ previewAudio.currentTime = previewTime; }catch(e){} }
+}
+document.getElementById('seekBar').addEventListener('input', e=>{
+  seekTo(totalDur() * (parseFloat(e.target.value)/100));
+});
+function jump(d){
+  const ts = currentTiming.steps||[]; let i = curStepIdx()+d;
+  i = Math.max(0, Math.min(ts.length-1, i));
+  if (ts[i]) seekTo(ts[i].start + 0.01);
+}
+document.getElementById('btnPrev').onclick = ()=>jump(-1);
+document.getElementById('btnNext').onclick = ()=>jump(1);
+
+// ── Nạp script + timing từ server, khởi động ──
+function synthTiming(script){
+  let off=0; const steps=(script.steps||[]).map((s,i)=>{
+    const dur=Math.max(2.5,(s.voice_text||'').length*0.06);
+    const o={id:s.id||i+1,start:+off.toFixed(3),end:+(off+dur).toFixed(3)}; off+=dur; return o;
+  });
+  return { total_duration:+off.toFixed(3), steps };
+}
+fetch(`/script/${TOKEN}`).then(r=>r.json()).then(data=>{
+  currentScript = data.script || data;              // {script, timing, audio}
+  currentTiming = data.timing || synthTiming(currentScript);
+  if (data.audio){
+    try { previewAudio = new Audio(`/audio/${TOKEN}`); previewAudio.preload='auto'; } catch(e){}
+  }
+  previewTime = 0;
+  requestAnimationFrame(frame);
+}).catch(e=>{ capEl.textContent = 'Lỗi nạp script: '+e; });
+</script>
+<!-- TubeCraft live canvas renderer -->
+<script src="preview_renderer.js"></script>
+</body>
+</html>

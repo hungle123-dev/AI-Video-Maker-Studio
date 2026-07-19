@@ -1,0 +1,12 @@
+{
+  "name": "tubecraft-renderer",
+  "private": true,
+  "version": "0.1.61",
+  "description": "Local Canvas renderer used by TubeCraft",
+  "dependencies": {
+    "canvas": "3.2.0"
+  },
+  "scripts": {
+    "check": "node --check engines/canvas_renderer.js && node --check engines/subtitle_engine.js && node --check engines/web/preview_renderer.js"
+  }
+}

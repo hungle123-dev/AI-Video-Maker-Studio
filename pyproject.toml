@@ -1,0 +1,10 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+asyncio_mode = "auto"
+
+[tool.coverage.run]
+branch = true
+source = ["core", "engines", "ui"]
+omit = ["core/scenes_*.py"]
+

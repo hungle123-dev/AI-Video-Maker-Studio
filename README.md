@@ -1,10 +1,21 @@
 # TubeCraft
 
-TubeCraft là studio desktop local-first biến một ý tưởng thành video giáo dục có kịch bản AI, lời đọc, phụ đề karaoke và MP4 hoàn chỉnh.
+> A local-first AI video studio for turning an idea into a narrated, captioned video.
 
-## Chạy sau khi clone
+TubeCraft helps educators, creators, and small teams produce short-form or lesson-based videos from one brief. Create a structured script, refine each scene, generate narration with timing, preview the result, and export an MP4—all from a Windows desktop app.
 
-Điều kiện duy nhất: Windows 10/11 và Python 3.12+.
+## Why TubeCraft
+
+Most AI video tools lock the entire workflow behind a hosted editor. TubeCraft keeps the production workspace on your machine:
+
+- **Local project files** — scripts, audio, jobs, previews, and exports stay under `data/`.
+- **Provider choice** — use the AI and TTS provider that fits your account, quota, and language.
+- **Scene-level control** — edit narration, visuals, templates, subtitles, colors, fonts, and backgrounds before exporting.
+- **Reliable publishing** — background jobs use revisions and atomic writes so an old render cannot overwrite newer work.
+
+## Quick start
+
+**Requirement:** Windows 10/11 and Python 3.12+.
 
 ```powershell
 git clone https://github.com/hungle123-dev/AI-Video-Maker-Studio.git
@@ -12,61 +23,94 @@ cd AI-Video-Maker-Studio
 python run.py
 ```
 
-`python run.py` là lệnh chạy duy nhất: lần đầu nó tự tạo `.venv`, cài Python dependencies/Canvas, rồi tự tải Node, FFmpeg, FFprobe và Chromium vào máy local. Các lần sau mở app ngay. Lần đầu cần Internet; các runtime nặng không nằm trong GitHub repository.
+That is the only command needed after cloning. On the first run, TubeCraft creates its virtual environment, installs Python and Canvas dependencies, and downloads Node.js, FFmpeg/FFprobe, and Chromium locally. Later runs open the app directly.
 
-## Quy trình tạo video
+> The first run needs an Internet connection and can take several minutes. Downloaded runtimes, dependencies, projects, media, logs, and credentials are ignored by Git.
+
+## From idea to MP4
 
 ```text
-Ý tưởng
-  → AI tạo outline / lesson script
-  → chỉnh step, scene và visual trong Editor
-  → TTS tạo audio + timing từng từ
-  → Canvas render + subtitle
-  → FFmpeg encode và ghép audio
-  → MP4
+Idea
+  → AI outline and lesson script
+  → scene-by-scene editing
+  → narration + word timing
+  → preview + subtitle styling
+  → Canvas render + FFmpeg encode
+  → MP4 export
 ```
 
-1. Tạo project, chọn template, tỉ lệ khung hình, giọng đọc và AI provider.
-2. Dùng Autopilot để tạo series hoặc tự nhập/chỉnh script.
-3. Preview từng cảnh, tạo audio, sau đó render từ hàng đợi.
-4. MP4 được lưu trong `data/outputs/`.
+1. Create a project and select the aspect ratio, template, visual style, narration, and AI provider.
+2. Generate a series with Autopilot or write/import a script yourself.
+3. Refine individual steps in the editor and preview visuals before spending render time.
+4. Generate audio, then render from the queue. Completed videos are stored in `data/outputs/`.
 
-## Tính năng
+## Capabilities
 
-- AI: Gemini, OpenAI, Claude, DeepSeek, OpenRouter và 9Router local.
-- TTS: Edge, Google TTS, Deepgram Aura, EverAI và Vivibe.
-- Template, font, nền, scene Canvas, effect và subtitle preset.
-- Video `9:16`, `16:9`, `1:1`; preview, queue, hủy job và export MP4.
-- Project/data hoàn toàn local; cloud chỉ nhận nội dung khi bạn chọn provider tương ứng.
-
-## Kiến trúc
-
-| Thư mục | Vai trò |
+| Area | What it provides |
 | --- | --- |
-| `ui/` | Flet desktop UI: Project, Editor, Template, Queue, Key và Settings |
-| `core/` | Project store, schema, AI/TTS adapter, queue, preview, bảo mật |
-| `engines/` | Audio pipeline, Canvas renderer, subtitle engine, FFmpeg encoder |
-| `tools/` | Runtime tải tự động khi chạy lần đầu — không commit |
-| `data/` | Dữ liệu local sinh khi chạy — không commit |
-| `tests/` | Workflow, schema, renderer và release smoke tests |
+| Script generation | Outline, long-form plan, lesson scripts, provider failover, JSON validation |
+| Visual system | Templates, art styles, backgrounds, scene catalogs, effects, fonts, local gallery assets |
+| Voice | Edge TTS, Google TTS, Deepgram Aura, EverAI, and Vivibe |
+| Captions | Word-timed karaoke captions, style-aware presets, font scale and placement controls |
+| Export | `9:16`, `16:9`, and `1:1` MP4 with audio verification before publish |
+| Production controls | Persistent queue, cancellation, previews, revision-safe audio/video publishing |
 
-## Dữ liệu và bảo mật
+## AI and TTS providers
 
-- API key được mã hoá bằng Windows DPAPI trong `data/keys.enc.json`.
-- Project/audio/video/job nằm trong `data/`; backup thư mục này để backup toàn bộ công việc.
-- Khi app bị đóng lúc render, job đang chạy bị đánh dấu gián đoạn để tránh publish file dở dang.
+TubeCraft supports Gemini, OpenAI, Claude, DeepSeek, OpenRouter, and a local 9Router-compatible endpoint for script generation. API keys are managed from the app and encrypted with Windows DPAPI.
 
-## Lưu ý hiệu năng
+For narration, select an engine in the project or settings. Cloud content is sent only to the provider you explicitly choose; the rest of the project workflow remains local.
 
-Canvas vẽ frame bằng CPU; NVIDIA/Intel/AMD GPU chủ yếu hỗ trợ encode video. Video 1080×1920, 30 FPS và nhiều animation sẽ cần đáng kể CPU/RAM. Đóng ứng dụng nặng hoặc hạ FPS khi cần xuất nhanh.
+## Architecture
 
-## Kiểm tra source
+```text
+Flet desktop UI
+       │
+       ├── Project store (JSON + media revisions)
+       ├── AI adapters / key rotation / retries
+       ├── TTS adapters → timing map + merged audio
+       └── Render queue
+                │
+                ├── Node Canvas scene renderer
+                ├── Subtitle engine
+                └── FFmpeg / FFprobe → validated MP4
+```
+
+| Directory | Purpose |
+| --- | --- |
+| `ui/` | Flet desktop views: dashboard, projects, editor, templates, queue, keys, settings |
+| `core/` | Domain logic: project store, schemas, AI/TTS adapters, jobs, preview, security |
+| `engines/` | Audio pipeline, Canvas renderer, subtitles, and video encoding |
+| `assets/`, `static/`, `samples/` | Application assets, fonts, sprites, and template previews |
+| `tests/` | Workflow, schema, renderer, UI, runtime, and release smoke tests |
+| `data/` | Local runtime state; never commit this directory |
+
+## Performance notes
+
+TubeCraft renders scenes with Node Canvas and encodes video through FFmpeg. Hardware encoders such as NVIDIA NVENC accelerate video encoding; scene drawing itself is primarily CPU/RAM work.
+
+For faster drafts, lower the render FPS or reduce the visual complexity. For final exports, close memory-heavy applications so the renderer can use more workers safely.
+
+## Development
 
 ```powershell
 python -m pytest -q
 npm run check
 ```
 
+The test suite covers script validation, key handling, TTS/render workflows, media revisions, UI actions, renderer integration, and startup/runtime checks.
+
+## Privacy and data
+
+- API keys are encrypted with Windows DPAPI in `data/keys.enc.json`.
+- Project metadata, audio, outputs, logs, and queue state stay local in `data/`.
+- A render is written to a temporary file, audio-verified with FFprobe, then published atomically.
+- If the app restarts during a job, the job is marked interrupted instead of publishing partial media.
+
+## Contributing
+
+Bug reports and focused pull requests are welcome. Please include a short reproduction, expected behavior, and the smallest relevant test when changing production logic.
+
 ## License
 
-Chưa có license công khai. Hãy bổ sung license trước khi phân phối rộng rãi.
+No public license has been selected yet. Do not redistribute the project until a license is added.
